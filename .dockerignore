@@ -1,0 +1,19 @@
+node_modules
+.next
+.git
+.github
+
+# 環境変数ファイルはビルド時に含めない（Cloud Run では環境変数として直接注入する）
+.env
+.env.*
+!.env.example
+
+npm-debug.log*
+
+# エディタ・OS
+.vscode
+.DS_Store
+
+# ドキュメント類（イメージサイズに寄与しないよう除外）
+*.md
+!README.md
