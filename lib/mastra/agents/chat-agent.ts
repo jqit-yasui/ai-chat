@@ -39,6 +39,16 @@ function isRateLimitError(error: unknown): boolean {
   return /\b429\b/.test(message) || /rate.?limit/i.test(message);
 }
 
+// 無料モデルの中には画像入力（vision）に対応していないものがある。
+// 429と同様、そのエラーを検知した場合も次の候補モデルへフォールバックする。
+// どのモデルが実際に vision 対応かは OpenRouter 側の実地検証が必要なため、
+// 事前にモデルを決め打ちせずエラー内容から判定する方式にしている。
+function isUnsupportedImageError(error: unknown, hasImages: boolean): boolean {
+  if (!hasImages) return false;
+  const message = error instanceof Error ? error.message : String(error);
+  return /image|vision|modalit|multimodal|unsupported/i.test(message);
+}
+
 export interface GenerateChatReplyOptions {
   abortSignal?: AbortSignal;
 }
@@ -48,15 +58,35 @@ export interface GenerateChatReplyResult {
   modelId: string;
 }
 
+type UserContentPart = { type: "text"; text: string } | { type: "image"; image: string };
+
+function buildUserMessage(message: string, images: string[]) {
+  if (images.length === 0) {
+    return message;
+  }
+
+  const content: UserContentPart[] = [];
+  if (message) {
+    content.push({ type: "text", text: message });
+  }
+  for (const image of images) {
+    content.push({ type: "image", image });
+  }
+
+  return [{ role: "user" as const, content }];
+}
+
 /**
- * FALLBACK_MODEL_IDS を先頭から順に試し、429（レート制限）を検知したら
- * 次の候補モデルへ自動フォールバックする。
+ * FALLBACK_MODEL_IDS を先頭から順に試し、429（レート制限）や画像入力
+ * 非対応エラーを検知したら次の候補モデルへ自動フォールバックする。
  */
 export async function generateChatReply(
   message: string,
+  images: string[] = [],
   options: GenerateChatReplyOptions = {},
 ): Promise<GenerateChatReplyResult> {
   let lastError: unknown;
+  const input = buildUserMessage(message, images);
 
   for (let i = 0; i < FALLBACK_MODEL_IDS.length; i++) {
     const modelId = FALLBACK_MODEL_IDS[i];
@@ -68,14 +98,17 @@ export async function generateChatReply(
     });
 
     try {
-      const result = await agent.generate(message, options);
+      const result = await agent.generate(input, options);
       return { text: result.text, modelId };
     } catch (error) {
       lastError = error;
       const isLastCandidate = i === FALLBACK_MODEL_IDS.length - 1;
-      if (isRateLimitError(error) && !isLastCandidate) {
+      if (
+        (isRateLimitError(error) || isUnsupportedImageError(error, images.length > 0)) &&
+        !isLastCandidate
+      ) {
         console.warn(
-          `OpenRouterモデル "${modelId}" がレート制限(429)を返したため、次の候補モデルにフォールバックします。`,
+          `OpenRouterモデル "${modelId}" が利用できなかったため（レート制限または画像非対応の可能性）、次の候補モデルにフォールバックします。`,
         );
         continue;
       }

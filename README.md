@@ -44,7 +44,11 @@ cp .env.example .env
 | `OPENROUTER_API_KEY` | [OpenRouter](https://openrouter.ai/keys) で発行する API キー。`lib/mastra/agents/chat-agent.ts` の `createOpenRouter()` が読み取る |
 | `DATABASE_URL` | MongoDB の接続文字列。ローカル例: `mongodb://127.0.0.1:27017/ai_chat?replicaSet=rs0`、Atlas例: `mongodb+srv://<user>:<password>@<cluster>/ai_chat` |
 
-> **無料モデルについて**: `lib/mastra/agents/chat-agent.ts` で指定している OpenRouter の `:free` モデルは、アップストリームプロバイダーの共有プールを利用するため、時間帯によって一時的なレート制限（`429`）が発生することがあります。発生した場合は [OpenRouter のモデル一覧](https://openrouter.ai/models?max_price=0) から別の `:free` モデルに切り替えるか、時間を置いて再試行してください。
+> **無料モデルについて**: `lib/mastra/agents/chat-agent.ts` で指定している OpenRouter の `:free` モデルは、アップストリームプロバイダーの共有プールを利用するため、時間帯によって一時的なレート制限（`429`）が発生することがあります。発生した場合は [OpenRouter のモデル一覧](https://openrouter.ai/models?max_price=0) から別の `:free` モデルに切り替えるか、時間を置いて再試行してください。無料モデルの中には画像入力（vision）に対応していないものもあり、その場合も自動的に次の候補モデルへフォールバックしますが、すべて非対応の場合はエラーになります。
+
+### 画像添付（マルチモーダル）
+
+チャット入力欄から画像を添付できます（ファイル選択 / ドラッグ&ドロップ、1メッセージにつき最大3枚、1枚あたり4MBまで、jpg/png/webp/gif のみ）。画像は外部ストレージを使わず、Base64データURLとして MongoDB に直接保存されます。
 
 ### 4. スキーマの反映
 

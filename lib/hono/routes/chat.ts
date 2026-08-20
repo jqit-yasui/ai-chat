@@ -4,14 +4,31 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { generateChatReply } from "@/lib/mastra/agents/chat-agent";
 import type { AppEnv } from "@/lib/hono/types";
+import {
+  MAX_IMAGES_PER_MESSAGE,
+  MAX_IMAGE_BYTES,
+  isAllowedImageMimeType,
+  parseImageDataUrl,
+} from "@/lib/image-constraints";
 
-const chatRequestSchema = z.object({
-  message: z
-    .string()
-    .trim()
-    .min(1, "メッセージを入力してください。")
-    .max(4000, "メッセージは4000文字以内で入力してください。"),
-});
+const imageSchema = z.string().refine((value) => {
+  const parsed = parseImageDataUrl(value);
+  if (!parsed) return false;
+  if (!isAllowedImageMimeType(parsed.mimeType)) return false;
+  return parsed.approxBytes <= MAX_IMAGE_BYTES;
+}, "画像の形式（jpg/png/webp/gif）またはサイズ（4MB以内）が不正です。");
+
+const chatRequestSchema = z
+  .object({
+    message: z.string().trim().max(4000, "メッセージは4000文字以内で入力してください。").default(""),
+    images: z
+      .array(imageSchema)
+      .max(MAX_IMAGES_PER_MESSAGE, `画像は${MAX_IMAGES_PER_MESSAGE}枚まで添付できます。`)
+      .default([]),
+  })
+  .refine((data) => data.message.length > 0 || data.images.length > 0, {
+    message: "メッセージまたは画像を入力してください。",
+  });
 
 const LLM_TIMEOUT_MS = 30_000;
 
@@ -19,17 +36,18 @@ export const chatRoute = new Hono<AppEnv>().post(
   "/chat",
   zValidator("json", chatRequestSchema, (result, c) => {
     if (!result.success) {
-      return c.json({ error: "メッセージの形式が正しくありません。" }, 400);
+      const message = result.error.issues[0]?.message ?? "メッセージの形式が正しくありません。";
+      return c.json({ error: message }, 400);
     }
   }),
   async (c) => {
-    const { message } = c.req.valid("json");
+    const { message, images } = c.req.valid("json");
     const dbSessionId = c.get("dbSessionId");
 
     let userMessage;
     try {
       userMessage = await prisma.message.create({
-        data: { sessionId: dbSessionId, role: "user", content: message },
+        data: { sessionId: dbSessionId, role: "user", content: message, images },
       });
     } catch (error) {
       console.error("Failed to save user message:", error);
@@ -42,7 +60,7 @@ export const chatRoute = new Hono<AppEnv>().post(
     let assistantText: string;
     const timeoutSignal = AbortSignal.timeout(LLM_TIMEOUT_MS);
     try {
-      const result = await generateChatReply(message, { abortSignal: timeoutSignal });
+      const result = await generateChatReply(message, images, { abortSignal: timeoutSignal });
       assistantText = result.text;
     } catch (error) {
       if (timeoutSignal.aborted) {

@@ -176,3 +176,22 @@ CLAUDE.md の仕様に基づく実装タスクリスト。上から順に進め�
   - `{"status":"ok"}` を無条件に返すため、DB接続断などの障害時にも 200 を返してしまい、Cloud Run 上での障害切り分けに使いにくい。`prisma.$queryRaw` 等での簡易疎通確認を追加する余地がある
 - [ ] 環境変数（`OPENROUTER_API_KEY`, `DATABASE_URL`）が未設定の場合の起動時バリデーションが無い
   - 現状は未設定でもアプリは起動し、該当機能を使った初回リクエスト時に初めてエラーになる。起動時に必須環境変数の有無をチェックし、欠落時に分かりやすいログを出す仕組みがあると運用しやすい
+
+## 11. 画像添付（マルチモーダル対応）
+
+Issue #2 に基づき実装。
+
+- [x] `prisma/schema.prisma`: `Message.images String[] @default([])` を追加（Base64データURLをそのまま保存。外部ストレージなし）
+- [x] `lib/image-constraints.ts`: 画像枚数（最大3枚）・サイズ（1枚4MBまで）・許可MIMEタイプ（jpg/png/webp/gif）の共通定義を新設し、フロント/APIの両方から参照
+- [x] `POST /api/chat`: リクエストボディを `{ message, images }` に拡張。`message`/`images` の少なくとも一方が必須になるようzodスキーマを変更
+- [x] `lib/mastra/agents/chat-agent.ts`: 画像添付時はマルチモーダルなメッセージ形式（`{ role: "user", content: [{type:"text",...},{type:"image",...}] }`）でエージェントを呼び出すよう変更。既存のレート制限(429)フォールバック機構を拡張し、画像非対応と思われるエラーでも次候補モデルへフォールバックするようにした
+- [x] フロントエンド（`components/chat/message-input.tsx`）: ファイル選択ボタン・ドラッグ&ドロップ・添付画像のサムネイルプレビュー（削除ボタン付き）を追加。クライアント側でも枚数・サイズ・形式のバリデーションを行う
+- [x] フロントエンド（`components/chat/message-list.tsx`）: メッセージ内の画像をバブル内にサムネイル表示
+- [x] CLAUDE.md / README.md を更新
+
+**未検証・残課題**（この環境では `npm install` がツール権限承認待ちで実行できず、`npm run lint` / `npm run build` および実際の OpenRouter API 呼び出しでの動作確認ができなかったため、実装後の検証は未実施）:
+- [ ] `npm run lint` / `npm run build` / 型チェックの実行
+- [ ] 実際に `openai/gpt-oss-20b:free` / `z-ai/glm-5.2:free` / `google/gemma-4-31b-it:free` が画像入力（vision）に対応しているかの実地確認。フォールバック機構でエラー内容から間接的に判定する設計にしているが、どのモデルが実際に成功するかは未確認。全モデルが非対応だった場合はvision対応の無料モデルへの入れ替えを検討すること
+- [ ] `prisma db push` でのスキーマ反映確認（`images` フィールド追加分）
+- [ ] ブラウザでの実機能確認（ファイル選択・ドラッグ&ドロップ・プレビュー削除・送信後の履歴表示・再訪時の画像復元）
+- [ ] Base64埋め込みによるMongoDBドキュメントサイズ・Atlas M0ストレージ（512MB）への影響の実地確認（画像を多用した場合の圧迫具合）
