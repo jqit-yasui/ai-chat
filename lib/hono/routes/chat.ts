@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { mastra } from "@/lib/mastra";
+import { generateChatReply } from "@/lib/mastra/agents/chat-agent";
 import type { AppEnv } from "@/lib/hono/types";
 
 const chatRequestSchema = z.object({
@@ -42,8 +42,7 @@ export const chatRoute = new Hono<AppEnv>().post(
     let assistantText: string;
     const timeoutSignal = AbortSignal.timeout(LLM_TIMEOUT_MS);
     try {
-      const agent = mastra.getAgentById("chat-agent");
-      const result = await agent.generate(message, { abortSignal: timeoutSignal });
+      const result = await generateChatReply(message, { abortSignal: timeoutSignal });
       assistantText = result.text;
     } catch (error) {
       if (timeoutSignal.aborted) {
