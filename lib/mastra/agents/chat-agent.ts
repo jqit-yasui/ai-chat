@@ -61,6 +61,22 @@ function isUnsupportedImageError(error: unknown, hasImages: boolean): boolean {
   return /image|vision|modalit|multimodal|unsupported/i.test(message);
 }
 
+// 画像複数枚の添付などで入力トークンが上限を超えた場合、モデルが
+// エラーを返さず空文字列の応答を返すことがある（HTTP 200 のまま）。
+// これを成功として扱うとフォールバックがすり抜けてしまうため、
+// 空応答は専用のエラーとして扱い、429や画像非対応エラーと同様に
+// 次の候補モデルへフォールバックする。
+class EmptyResponseError extends Error {
+  constructor(modelId: string) {
+    super(`OpenRouterモデル "${modelId}" が空の応答を返しました。`);
+    this.name = "EmptyResponseError";
+  }
+}
+
+function isEmptyResponseError(error: unknown): boolean {
+  return error instanceof EmptyResponseError;
+}
+
 export interface GenerateChatReplyOptions {
   abortSignal?: AbortSignal;
 }
@@ -117,13 +133,22 @@ export async function generateChatReply(
 
     try {
       const result = await agent.generate(input, options);
+      if (!result.text || result.text.trim().length === 0) {
+        throw new EmptyResponseError(modelId);
+      }
       return { text: result.text, modelId };
     } catch (error) {
       lastError = error;
       const isLastCandidate = i === modelIds.length - 1;
-      if ((isRateLimitError(error) || isUnsupportedImageError(error, hasImages)) && !isLastCandidate) {
+      const isEmpty = isEmptyResponseError(error);
+      if (
+        (isRateLimitError(error) || isUnsupportedImageError(error, hasImages) || isEmpty) &&
+        !isLastCandidate
+      ) {
         console.warn(
-          `OpenRouterモデル "${modelId}" が利用できなかったため（レート制限または画像非対応の可能性）、次の候補モデルにフォールバックします。`,
+          isEmpty
+            ? `OpenRouterモデル "${modelId}" が空の応答を返したため、次の候補モデルにフォールバックします。`
+            : `OpenRouterモデル "${modelId}" が利用できなかったため（レート制限または画像非対応の可能性）、次の候補モデルにフォールバックします。`,
         );
         continue;
       }
