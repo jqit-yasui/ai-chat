@@ -31,15 +31,30 @@ export function MessageList({ messages, isLoadingHistory, isSending }: Props) {
           key={message.id}
           className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
         >
-          <p
-            className={`max-w-[80%] whitespace-pre-wrap break-words rounded-2xl px-4 py-2 text-sm ${
+          <div
+            className={`flex max-w-[80%] flex-col gap-2 rounded-2xl px-4 py-2 text-sm ${
               message.role === "user"
                 ? "bg-blue-600 text-white"
                 : "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100"
             }`}
           >
-            {message.content}
-          </p>
+            {message.images && message.images.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {message.images.map((src, index) => (
+                  // eslint-disable-next-line @next/next/no-img-element -- 添付画像（data URL）のプレビュー表示
+                  <img
+                    key={index}
+                    src={src}
+                    alt=""
+                    className="max-h-48 max-w-full rounded-lg object-cover"
+                  />
+                ))}
+              </div>
+            )}
+            {message.content && (
+              <p className="whitespace-pre-wrap break-words">{message.content}</p>
+            )}
+          </div>
         </div>
       ))}
       {isSending && (

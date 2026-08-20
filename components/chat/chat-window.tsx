@@ -34,13 +34,14 @@ export function ChatWindow() {
     };
   }, []);
 
-  async function handleSend(text: string) {
+  async function handleSend(text: string, images: string[]) {
     setError(null);
 
     const optimisticUserMessage: ChatMessage = {
       id: `pending-${Date.now()}`,
       role: "user",
       content: text,
+      images,
       createdAt: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, optimisticUserMessage]);
@@ -50,7 +51,7 @@ export function ChatWindow() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: text, images }),
       });
       const data = await res.json();
 

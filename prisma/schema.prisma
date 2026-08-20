@@ -21,5 +21,6 @@ model Message {
   sessionId String   @db.ObjectId
   role      String
   content   String
+  images    String[] @default([])
   createdAt DateTime @default(now())
 }
