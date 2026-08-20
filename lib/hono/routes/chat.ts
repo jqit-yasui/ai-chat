@@ -77,6 +77,17 @@ export const chatRoute = new Hono<AppEnv>().post(
       );
     }
 
+    if (!assistantText || assistantText.trim().length === 0) {
+      // generateChatReply は空応答を検知すると次候補へフォールバックし、
+      // 全モデルが空応答（または失敗）だった場合は例外を投げる想定のため
+      // 通常はここに到達しないが、念のため空文字のまま保存しない防御を入れる。
+      console.error("LLM API returned an empty response after all fallbacks.");
+      return c.json(
+        { error: "AIの応答生成に失敗しました。しばらく時間をおいて再度お試しください。" },
+        502,
+      );
+    }
+
     let assistantMessage;
     try {
       assistantMessage = await prisma.message.create({
