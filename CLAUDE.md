@@ -23,7 +23,7 @@ Claude.ai や ChatGPT のような、単一の会話画面でユーザーと AI 
 | ORM | Prisma |
 | データベース | MongoDB（MongoDB Atlas, M0 無料クラスター） |
 | デプロイ先 | Google Cloud Run（コンテナデプロイ） |
-| 認証 | なし |
+| 認証 | アプリ内のユーザーアカウント認証はなし。本番環境（Cloud Run）のみ、外部公開を制限する簡易 Basic 認証を `middleware.ts` で適用（詳細は本セクション末尾を参照） |
 
 ## コスト方針
 
@@ -111,6 +111,8 @@ model Message {
 |---|---|
 | `OPENROUTER_API_KEY` | OpenRouter API キー（https://openrouter.ai/keys で発行。`lib/mastra/agents/chat-agent.ts` の `createOpenRouter()` が読み取る） |
 | `DATABASE_URL` | MongoDB Atlas への接続文字列 |
+| `BASIC_AUTH_USER` | 本番環境（Cloud Run）保護用の Basic 認証ユーザー名（`middleware.ts` が読み取る。`NODE_ENV=production` のときのみ適用） |
+| `BASIC_AUTH_PASSWORD` | 本番環境（Cloud Run）保護用の Basic 認証パスワード（`middleware.ts` が読み取る。`NODE_ENV=production` のときのみ適用） |
 
 ## デプロイ
 
@@ -121,6 +123,7 @@ model Message {
 ## 実装方針・注意点
 
 - 認証機能は実装しない。将来的にログイン機能を追加する可能性を考慮し、`Session` モデルは `session_id` を軸にした設計とし、後からユーザーアカウントに紐付けやすい構造にしておく。
+- 上記の「認証機能なし」はユーザーアカウント単位の認証（ログイン）の話であり、本番環境（Cloud Run）のみ `middleware.ts` でアプリ全体にかかる簡易 Basic 認証（`BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD`）を適用している。これは Cloud Run の IAM を `allUsers`（誰でもアクセス可能）にしたまま外部公開を制限するための対策であり、ユーザーごとの識別・アカウント管理を行うものではない。`NODE_ENV=production` の場合のみ適用され、ローカル開発（`npm run dev`）では適用されない。
 - 複数会話スレッドの UI（サイドバーでの会話切り替えなど）は現時点では実装しない。
 - AI 応答の Markdown 整形（コードブロック、箇条書きの装飾表示）は行わない。プレーンテキストとして表示する。
 - Mastra エージェントはツール呼び出しや外部ドキュメント参照（RAG）を持たない、シンプルな会話のみのエージェントとして構成する。

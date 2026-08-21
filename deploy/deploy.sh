@@ -9,8 +9,9 @@
 #
 # 使い方:
 #   1. 下記の変数を自分の環境に合わせて書き換える（PROJECT_ID, BILLING_ACCOUNT_ID など）
-#   2. OPENROUTER_API_KEY, DATABASE_URL を環境変数として渡して実行する
-#        OPENROUTER_API_KEY="sk-or-v1-..." DATABASE_URL="mongodb+srv://..." ./deploy/deploy.sh
+#   2. OPENROUTER_API_KEY, DATABASE_URL, BASIC_AUTH_USER, BASIC_AUTH_PASSWORD を環境変数として渡して実行する
+#        OPENROUTER_API_KEY="sk-or-v1-..." DATABASE_URL="mongodb+srv://..." \
+#        BASIC_AUTH_USER="..." BASIC_AUTH_PASSWORD="..." ./deploy/deploy.sh
 #
 # このスクリプトは実行しません（ai-chat プロジェクト側のエージェントはGoogle Cloud
 # の認証情報を持っていないため）。ユーザー自身の端末・アカウントで実行してください。
@@ -28,6 +29,8 @@ BUDGET_AMOUNT_USD="1"                     # 予算アラートのしきい値（
 
 : "${OPENROUTER_API_KEY:?環境変数 OPENROUTER_API_KEY を設定してください（OpenRouter で発行したキー）}"
 : "${DATABASE_URL:?環境変数 DATABASE_URL を設定してください（MongoDB Atlas の接続文字列）}"
+: "${BASIC_AUTH_USER:?環境変数 BASIC_AUTH_USER を設定してください（本番環境保護用の Basic 認証ユーザー名）}"
+: "${BASIC_AUTH_PASSWORD:?環境変数 BASIC_AUTH_PASSWORD を設定してください（本番環境保護用の Basic 認証パスワード）}"
 
 if [ "$PROJECT_ID" = "your-gcp-project-id" ]; then
   echo "エラー: deploy.sh 冒頭の PROJECT_ID / BILLING_ACCOUNT_ID などを実際の値に書き換えてから実行してください。" >&2
@@ -61,7 +64,7 @@ echo "==> Cloud Run へソースからデプロイ（Cloud Build でリモート
 # --source .                 : リポジトリ直下の Dockerfile を Cloud Build がビルドして Artifact Registry に push
 # --min-instances=0          : 常時起動させない（課金防止。コールドスタートは許容）
 # --cpu-throttling           : リクエスト処理中のみ CPU を割り当てる（デフォルト値だが明示）
-# --allow-unauthenticated    : 認証なしで誰でもアクセス可能にする（CLAUDE.md の仕様どおり認証なし運用）
+# --allow-unauthenticated    : Cloud Run の IAM は allUsers のまま公開し、代わりにアプリ側の middleware.ts で Basic 認証をかける運用
 # --set-env-vars             : Secret Manager は使わず環境変数に直接設定
 gcloud run deploy "${SERVICE_NAME}" \
   --source=. \
@@ -70,7 +73,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --min-instances=0 \
   --cpu-throttling \
   --allow-unauthenticated \
-  --set-env-vars="OPENROUTER_API_KEY=${OPENROUTER_API_KEY},DATABASE_URL=${DATABASE_URL}"
+  --set-env-vars="OPENROUTER_API_KEY=${OPENROUTER_API_KEY},DATABASE_URL=${DATABASE_URL},BASIC_AUTH_USER=${BASIC_AUTH_USER},BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD}"
 
 echo "==> 予算アラートを設定（${BUDGET_AMOUNT_USD} USD、誤課金の早期検知用）"
 gcloud billing budgets create \
