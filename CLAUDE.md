@@ -9,7 +9,7 @@ Claude.ai や ChatGPT のような、単一の会話画面でユーザーと AI 
 - 用途: 汎用チャットアプリ（特定ドメインに特化しない）
 - UI・エージェント応答言語: 日本語
 - 会話スレッド: 単一会話のみ（複数スレッドの作成・切り替えは行わない）
-- 応答表示: ストリーミングなし（生成完了後に一括表示）
+- 応答表示: ストリーミング表示（SSE で逐次受信し、文字を逐次追加表示する）
 - Markdown 整形: 行わない（プレーンテキスト表示）
 
 ## 技術スタック
@@ -97,13 +97,13 @@ model Message {
 
 | メソッド | パス | 説明 |
 |---|---|---|
-| POST | `/api/chat` | ユーザーのメッセージ（テキスト・画像）を受け取り、Mastra エージェント経由で OpenRouter（無料モデル）に問い合わせ、応答をまとめて返す。ユーザー発言・AI 応答の両方を DB に保存する |
+| POST | `/api/chat` | ユーザーのメッセージ（テキスト・画像）を受け取り、Mastra エージェント経由で OpenRouter（無料モデル）に問い合わせ、応答を SSE（`text/event-stream`）で逐次返す。ユーザー発言・AI 応答の両方を DB に保存する |
 | GET | `/api/messages` | 現在のセッション（Cookie の `session_id`）に紐づく会話履歴を取得する |
 
-- ストリーミングは行わないため、`/api/chat` は AI の応答が完成してから JSON レスポンスを返す。
+- `POST /api/chat` は成功時、SSE（`text/event-stream`）でレスポンスを返す。`lib/hono/routes/chat.ts` が `hono/streaming` の `streamSSE` を使い、`event: chunk`（`{ text: string }` の差分テキスト）を逐次送出し、完了時に `event: done`（`{ userMessage, assistantMessage }`、非ストリーミング時と同じ形）を送出する。DB に保存する `Message` はストリーム完了後の最終テキストのみで、途中経過（チャンク）は保存しない。バリデーションエラーやモデル呼び出し自体の失敗（最初のチャンクを受け取れない場合）など、ストリーム開始前に確定するエラーは従来どおり `c.json({ error }, status)` で返し、ストリーム開始後に発生したエラーは `event: error`（`{ error: string }`）として送出する。フロント（`components/chat/chat-window.tsx`）はレスポンスの `Content-Type` を見て、`text/event-stream` の場合は `lib/sse.ts` の `parseSseStream` でパースし、SSE でない場合（＝エラー）は JSON として扱う。
 - `POST /api/chat` のリクエストボディは `{ message: string, images?: string[] }`。`images` は `data:image/png;base64,...` 形式の Base64 データURL配列（最大3枚、1枚あたり4MB、jpg/png/webp/gif のみ）。`message` と `images` の少なくとも一方は必須。
 - 画像は外部ストレージを使わず、`Message.images`（`String[]`）として MongoDB に直接保存する（無料枠方針との整合を優先し、追加インフラを持たない構成とした）。
-- LLM への画像入力（vision）に対応していない無料モデルがあり得るため、`lib/mastra/agents/chat-agent.ts` のモデルフォールバック機構は、レート制限（429）に加えて画像非対応エラーも検知して次候補モデルへフォールバックする。どのモデルが実際に vision 対応かは事前に決め打ちせず、エラー内容から判定する。
+- LLM への画像入力（vision）に対応していない無料モデルがあり得るため、`lib/mastra/agents/chat-agent.ts` のモデルフォールバック機構は、レート制限（429）に加えて画像非対応エラーも検知して次候補モデルへフォールバックする。どのモデルが実際に vision 対応かは事前に決め打ちせず、エラー内容から判定する。ストリーミング対応後は、この判定を「各候補モデルから最初の意味のあるチャンクを受け取れるか」の時点でのみ行う（一度クライアントへチャンクの送出を開始した後はフォールバックしない）。
 
 ## 環境変数
 

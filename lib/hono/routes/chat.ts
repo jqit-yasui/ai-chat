@@ -1,8 +1,9 @@
 import { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { generateChatReply } from "@/lib/mastra/agents/chat-agent";
+import { streamChatReply } from "@/lib/mastra/agents/chat-agent";
 import type { AppEnv } from "@/lib/hono/types";
 import {
   MAX_IMAGES_PER_MESSAGE,
@@ -57,11 +58,13 @@ export const chatRoute = new Hono<AppEnv>().post(
       );
     }
 
-    let assistantText: string;
     const timeoutSignal = AbortSignal.timeout(LLM_TIMEOUT_MS);
+    let streamResult: Awaited<ReturnType<typeof streamChatReply>>;
     try {
-      const result = await generateChatReply(message, images, { abortSignal: timeoutSignal });
-      assistantText = result.text;
+      // ここでは最初の意味のあるチャンクを受け取れるかどうかまでを待つ
+      // （フォールバック判定に必要なため）。ストリーミングはこの後の
+      // streamSSE 内で行う。
+      streamResult = await streamChatReply(message, images, { abortSignal: timeoutSignal });
     } catch (error) {
       if (timeoutSignal.aborted) {
         console.error("LLM API timeout:", error);
@@ -77,30 +80,53 @@ export const chatRoute = new Hono<AppEnv>().post(
       );
     }
 
-    if (!assistantText || assistantText.trim().length === 0) {
-      // generateChatReply は空応答を検知すると次候補へフォールバックし、
-      // 全モデルが空応答（または失敗）だった場合は例外を投げる想定のため
-      // 通常はここに到達しないが、念のため空文字のまま保存しない防御を入れる。
-      console.error("LLM API returned an empty response after all fallbacks.");
-      return c.json(
-        { error: "AIの応答生成に失敗しました。しばらく時間をおいて再度お試しください。" },
-        502,
-      );
-    }
+    return streamSSE(c, async (sseStream) => {
+      let assistantText = "";
+      try {
+        for await (const chunk of streamResult.stream) {
+          assistantText += chunk;
+          await sseStream.writeSSE({ event: "chunk", data: JSON.stringify({ text: chunk }) });
+        }
+      } catch (error) {
+        console.error(
+          timeoutSignal.aborted ? "LLM API timeout during streaming:" : "LLM API error during streaming:",
+          error,
+        );
+      }
 
-    let assistantMessage;
-    try {
-      assistantMessage = await prisma.message.create({
-        data: { sessionId: dbSessionId, role: "assistant", content: assistantText },
+      if (!assistantText || assistantText.trim().length === 0) {
+        console.error("LLM API returned an empty response while streaming.");
+        await sseStream.writeSSE({
+          event: "error",
+          data: JSON.stringify({
+            error: timeoutSignal.aborted
+              ? "AIの応答がタイムアウトしました。しばらく時間をおいて再度お試しください。"
+              : "AIの応答生成に失敗しました。しばらく時間をおいて再度お試しください。",
+          }),
+        });
+        return;
+      }
+
+      // 保存するMessageレコードは、ストリーム完了後の最終テキストのみ
+      // （途中経過は保存しない）。
+      let assistantMessage;
+      try {
+        assistantMessage = await prisma.message.create({
+          data: { sessionId: dbSessionId, role: "assistant", content: assistantText },
+        });
+      } catch (error) {
+        console.error("Failed to save assistant message:", error);
+        await sseStream.writeSSE({
+          event: "error",
+          data: JSON.stringify({ error: "応答の保存に失敗しました。しばらく時間をおいて再度お試しください。" }),
+        });
+        return;
+      }
+
+      await sseStream.writeSSE({
+        event: "done",
+        data: JSON.stringify({ userMessage, assistantMessage }),
       });
-    } catch (error) {
-      console.error("Failed to save assistant message:", error);
-      return c.json(
-        { error: "応答の保存に失敗しました。しばらく時間をおいて再度お試しください。" },
-        500,
-      );
-    }
-
-    return c.json({ userMessage, assistantMessage });
+    });
   },
 );
