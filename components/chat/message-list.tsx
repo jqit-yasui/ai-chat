@@ -7,14 +7,15 @@ type Props = {
   messages: ChatMessage[];
   isLoadingHistory: boolean;
   isSending: boolean;
+  streamingText: string | null;
 };
 
-export function MessageList({ messages, isLoadingHistory, isSending }: Props) {
+export function MessageList({ messages, isLoadingHistory, isSending, streamingText }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isSending]);
+  }, [messages, isSending, streamingText]);
 
   return (
     <div className="flex flex-1 flex-col gap-3 overflow-y-auto py-4">
@@ -57,11 +58,18 @@ export function MessageList({ messages, isLoadingHistory, isSending }: Props) {
           </div>
         </div>
       ))}
-      {isSending && (
+      {isSending && streamingText === null && (
         <div className="flex justify-start">
           <p className="max-w-[80%] rounded-2xl bg-zinc-100 px-4 py-2 text-sm text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-            AIが入力中...
+            AIが考え中...
           </p>
+        </div>
+      )}
+      {streamingText !== null && (
+        <div className="flex justify-start">
+          <div className="max-w-[80%] rounded-2xl bg-zinc-100 px-4 py-2 text-sm text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100">
+            <p className="whitespace-pre-wrap break-words">{streamingText}</p>
+          </div>
         </div>
       )}
       <div ref={bottomRef} />

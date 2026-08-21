@@ -81,8 +81,10 @@ export interface GenerateChatReplyOptions {
   abortSignal?: AbortSignal;
 }
 
-export interface GenerateChatReplyResult {
-  text: string;
+export interface StreamChatReplyResult {
+  // 逐次生成されるテキスト差分（チャンク）を順に返す。空応答判定を通過した
+  // 最初の非空チャンクが最初の要素として含まれる。
+  stream: AsyncGenerator<string>;
   modelId: string;
 }
 
@@ -104,16 +106,42 @@ function buildUserMessage(message: string, images: string[]) {
   return [{ role: "user" as const, content }];
 }
 
+// ストリームの先頭から、空白のみではない最初のチャンクに到達するまで読み進める。
+// 空応答検知（EmptyResponseError）はこの「最初の意味のあるチャンク」が得られるか
+// どうかで判定する。ここまでに得られた全チャンク（空白のみのものを含む）は
+// buffered として返し、relay 側で欠落なく先頭に含める。
+async function readFirstMeaningfulChunk(
+  iterator: AsyncIterator<string>,
+): Promise<{ done: boolean; buffered: string }> {
+  let buffered = "";
+  while (true) {
+    const next = await iterator.next();
+    if (next.done) {
+      return { done: true, buffered };
+    }
+    const value = next.value ?? "";
+    buffered += value;
+    if (value.trim().length > 0) {
+      return { done: false, buffered };
+    }
+  }
+}
+
 /**
  * 画像添付の有無に応じて FALLBACK_MODEL_IDS / VISION_FALLBACK_MODEL_IDS を
  * 先頭から順に試し、429（レート制限）や画像入力非対応エラーを検知したら
  * 次の候補モデルへ自動フォールバックする。
+ *
+ * ストリーミングのため、フォールバック判定（429・画像非対応・空応答）は
+ * 各候補モデルの「最初の意味のあるチャンクを受け取れるか」の時点でのみ行う。
+ * 一度クライアントへチャンクの送出を開始した後は、ストリーム途中で発生した
+ * エラーはフォールバックせず呼び出し元（ルートハンドラ）に委ねる。
  */
-export async function generateChatReply(
+export async function streamChatReply(
   message: string,
   images: string[] = [],
   options: GenerateChatReplyOptions = {},
-): Promise<GenerateChatReplyResult> {
+): Promise<StreamChatReplyResult> {
   const hasImages = images.length > 0;
   const modelIds: readonly string[] = hasImages ? VISION_FALLBACK_MODEL_IDS : FALLBACK_MODEL_IDS;
   const input = buildUserMessage(message, images);
@@ -132,11 +160,25 @@ export async function generateChatReply(
           });
 
     try {
-      const result = await agent.generate(input, options);
-      if (!result.text || result.text.trim().length === 0) {
+      const result = await agent.stream(input, options);
+      const iterator = result.textStream[Symbol.asyncIterator]();
+      const first = await readFirstMeaningfulChunk(iterator);
+
+      if (first.done && first.buffered.trim().length === 0) {
         throw new EmptyResponseError(modelId);
       }
-      return { text: result.text, modelId };
+
+      async function* relay(): AsyncGenerator<string> {
+        if (first.buffered) yield first.buffered;
+        if (first.done) return;
+        let next = await iterator.next();
+        while (!next.done) {
+          if (next.value) yield next.value;
+          next = await iterator.next();
+        }
+      }
+
+      return { stream: relay(), modelId };
     } catch (error) {
       lastError = error;
       const isLastCandidate = i === modelIds.length - 1;
