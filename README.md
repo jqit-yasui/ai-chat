@@ -43,8 +43,16 @@ cp .env.example .env
 |---|---|
 | `OPENROUTER_API_KEY` | [OpenRouter](https://openrouter.ai/keys) で発行する API キー。`lib/mastra/agents/chat-agent.ts` の `createOpenRouter()` が読み取る |
 | `DATABASE_URL` | MongoDB の接続文字列。ローカル例: `mongodb://127.0.0.1:27017/ai_chat?replicaSet=rs0`、Atlas例: `mongodb+srv://<user>:<password>@<cluster>/ai_chat` |
+| `BASIC_AUTH_USER` | 本番環境（Cloud Run）保護用の Basic 認証ユーザー名。`middleware.ts` が参照する。ローカル開発時（`npm run dev` / `NODE_ENV=production` 以外）は未設定でも動作する |
+| `BASIC_AUTH_PASSWORD` | 本番環境（Cloud Run）保護用の Basic 認証パスワード。`middleware.ts` が参照する。ローカル開発時は未設定でも動作する |
 
 > **無料モデルについて**: `lib/mastra/agents/chat-agent.ts` で指定している OpenRouter の `:free` モデルは、アップストリームプロバイダーの共有プールを利用するため、時間帯によって一時的なレート制限（`429`）が発生することがあります。発生した場合は [OpenRouter のモデル一覧](https://openrouter.ai/models?max_price=0) から別の `:free` モデルに切り替えるか、時間を置いて再試行してください。無料モデルの中には画像入力（vision）に対応していないものもあり、その場合も自動的に次の候補モデルへフォールバックしますが、すべて非対応の場合はエラーになります。
+
+### 本番環境の Basic 認証
+
+Cloud Run の IAM は `allUsers`（誰でもアクセス可能）に設定して運用するため、代わりにアプリ側（`middleware.ts`）で簡易的な Basic 認証をかけています。`BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD` は本番相当（`NODE_ENV=production`）で起動した場合のみ適用され、`npm run dev` によるローカル開発時は未設定のままでも認証なしでアクセスできます。
+
+本番にデプロイする際は、`OPENROUTER_API_KEY` / `DATABASE_URL` と合わせて `BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD` も環境変数として設定してください（後述の「デプロイ」章を参照）。値を空にすると Cloud Run 上で誰も認証を突破できなくなる（＝閉じた状態）ため、必ず実際の値を設定してください。
 
 ### 画像添付（マルチモーダル）
 
@@ -82,8 +90,12 @@ npm run start           # ビルド済みアプリの起動
 # gcloud auth login 済みであること
 OPENROUTER_API_KEY="sk-or-v1-..." \
 DATABASE_URL="mongodb+srv://..." \
+BASIC_AUTH_USER="your-username" \
+BASIC_AUTH_PASSWORD="your-password" \
 ./deploy/deploy.sh
 ```
+
+`BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD` は Cloud Run の IAM を `allUsers`（誰でもアクセス可能）にしたまま運用するための、アプリ側の簡易 Basic 認証に使う値です（詳細は前述の「本番環境の Basic 認証」を参照）。
 
 実行前に `deploy/deploy.sh` 冒頭の `PROJECT_ID` / `REGION` / `BILLING_ACCOUNT_ID` などを自分の環境に合わせて書き換えてください。
 

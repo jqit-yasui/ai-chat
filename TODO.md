@@ -195,3 +195,20 @@ Issue #2 に基づき実装。
 - [ ] `prisma db push` でのスキーマ反映確認（`images` フィールド追加分）
 - [ ] ブラウザでの実機能確認（ファイル選択・ドラッグ&ドロップ・プレビュー削除・送信後の履歴表示・再訪時の画像復元）
 - [ ] Base64埋め込みによるMongoDBドキュメントサイズ・Atlas M0ストレージ（512MB）への影響の実地確認（画像を多用した場合の圧迫具合）
+
+## 12. 本番環境への Basic 認証追加
+
+Issue #6 に基づき実装。Cloud Run の IAM を `allUsers`（公開）にしたまま運用する方針のため、代わりにアプリ側で簡易的な Basic 認証をかける。
+
+- [x] `middleware.ts` を新設し、全ページ・APIに Basic 認証を適用（`matcher` で `_next/static` 等の静的アセットのみ除外）
+- [x] `BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD` は環境変数で管理し、コードには直書きしない
+- [x] `NODE_ENV=production` のときのみ認証を適用し、ローカル開発（`npm run dev`）では認証なしでアクセスできるようにした（開発体験を優先。本番相当の動作確認は `NODE_ENV=production` でのビルド・起動で行う）
+- [x] Authorization ヘッダーの Base64 デコードに失敗した場合も 500 にならず 401 を返すよう try/catch でハンドリング
+- [x] `.env.example` に `BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD` を追記
+- [x] `deploy/deploy.sh` で `BASIC_AUTH_USER` / `BASIC_AUTH_PASSWORD` を必須環境変数化し、Cloud Run の `--set-env-vars` に追加
+- [x] README.md / CLAUDE.md に認証情報の設定方法・運用方針を追記
+
+**未検証・残課題**（この環境では `npm install` がツール権限承認待ちで実行できず、`npm run lint` / `npm run build` が実行できなかったため、実装後の検証は未実施）:
+- [ ] `npm run lint` / `npm run build` / 型チェックの実行
+- [ ] ブラウザでの実機能確認（Basic 認証ダイアログの表示、正しい/誤った資格情報での挙動、`NODE_ENV=production` ビルドでの動作確認）
+- [ ] Issue本文の注意事項のとおり、マージ・デプロイ前に Cloud Run の IAM を `allUsers` に戻す作業（インフラ側の手動対応。このリポジトリのコード変更には含まれない）
