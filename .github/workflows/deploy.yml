@@ -40,4 +40,4 @@ jobs:
             --platform=managed \
             --min-instances=0 \
             --allow-unauthenticated \
-            --set-env-vars="OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }},DATABASE_URL=${{ secrets.DATABASE_URL }}"
+            --set-env-vars="OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }},DATABASE_URL=${{ secrets.DATABASE_URL }},BASIC_AUTH_USER=${{ secrets.BASIC_AUTH_USER }},BASIC_AUTH_PASSWORD=${{ secrets.BASIC_AUTH_PASSWORD }}"
