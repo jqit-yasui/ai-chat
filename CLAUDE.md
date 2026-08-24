@@ -19,7 +19,7 @@ Claude.ai や ChatGPT のような、単一の会話画面でユーザーと AI 
 | フロントエンド | Next.js (App Router) |
 | API サーバー | Hono（Next.js の API Routes を代替。`app/api/[[...route]]/route.ts` 配下にマウント） |
 | AI エージェントフレームワーク | Mastra |
-| LLM | OpenRouter 経由の無料モデル（`@openrouter/ai-sdk-provider`。既定: `openai/gpt-oss-20b:free`） |
+| LLM | OpenRouter 経由の無料モデル（`@openrouter/ai-sdk-provider`。既定: `z-ai/glm-5.2:free`） |
 | ORM | Prisma |
 | データベース | MongoDB（MongoDB Atlas, M0 無料クラスター） |
 | デプロイ先 | Google Cloud Run（コンテナデプロイ） |
