@@ -30,6 +30,8 @@ export function MessageList({ messages, isLoadingHistory, isSending, streamingTe
       {messages.map((message) => (
         <div
           key={message.id}
+          data-testid="chat-message"
+          data-role={message.role}
           className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
         >
           <div
