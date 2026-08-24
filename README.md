@@ -5,7 +5,7 @@ OpenRouter 経由の無料LLMを利用した、認証なしの汎用チャット
 ## 技術スタック
 
 - フロントエンド / API サーバー: Next.js (App Router) + Hono（`app/api/[[...route]]` 配下にマウント）
-- AI エージェントフレームワーク: [Mastra](https://mastra.ai/)（[OpenRouter](https://openrouter.ai/) 経由で無料モデルを利用。既定: `openai/gpt-oss-20b:free`）
+- AI エージェントフレームワーク: [Mastra](https://mastra.ai/)（[OpenRouter](https://openrouter.ai/) 経由で無料モデルを利用。既定: `z-ai/glm-5.2:free`）
 - ORM / DB: Prisma + MongoDB
 - デプロイ先: Google Cloud Run
 

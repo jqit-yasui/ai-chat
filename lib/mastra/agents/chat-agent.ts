@@ -8,22 +8,21 @@ const openrouter = createOpenRouter({
 const INSTRUCTIONS =
   "あなたは親切な汎用AIアシスタントです。ユーザーの質問や相談に、常に日本語で分かりやすく丁寧に回答してください。";
 
-// OpenRouter の無料モデルは共有プールのレート制限（429）に当たることがあるため、
-// 優先度順に並べた候補から順にフォールバックする。
+// OpenRouter の無料モデルは共有プールのレート制限（429）に当たることや、
+// モデル自体が廃止・リネームされることがあるため、優先度順に並べた候補から
+// 順にフォールバックする（候補は2026年8月時点でOpenRouter公式無料一覧に
+// 掲載されているものを選定）。
 export const FALLBACK_MODEL_IDS = [
-  "openai/gpt-oss-20b:free",
   "z-ai/glm-5.2:free",
-  "google/gemma-4-31b-it:free",
+  "nvidia/nemotron-nano-9b-v2:free",
 ] as const;
 
 // 画像添付時に使う候補リスト。OpenRouter のモデル一覧API
 // （GET https://openrouter.ai/api/v1/models）で architecture.input_modalities
-// に "image" を含む :free モデルを調査して選定（2026-08-20時点で確認）。
-// FALLBACK_MODEL_IDS のうち画像入力に対応しているのは google/gemma-4-31b-it:free
-// のみで、他の2つは "No endpoints found that support image input" で必ず失敗するため、
+// に "image" を含む :free モデルを調査して選定（2026年8月時点で確認）。
+// FALLBACK_MODEL_IDS のモデルは画像入力に対応していないため、
 // 画像添付時はこちらの vision 対応モデルのみのリストを使う。
 export const VISION_FALLBACK_MODEL_IDS = [
-  "google/gemma-4-31b-it:free",
   "google/gemma-4-26b-a4b-it:free",
   "nvidia/nemotron-nano-12b-v2-vl:free",
 ] as const;
